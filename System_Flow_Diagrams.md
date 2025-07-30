@@ -39,8 +39,7 @@ sequenceDiagram
     participant WS as WebSocket Server
     participant AS as Audio Service
     participant STT as Speech-to-Text
-    participant NLP as NLP Engine
-    participant QG as Question Generator
+    participant OAI as OpenAI API
     participant TTS as Text-to-Speech
     participant DB as Database
     
@@ -51,10 +50,10 @@ sequenceDiagram
     WS-->>C: Connection established
     
     Note over C,DB: First Question
-    WS->>QG: Generate opening question
-    QG->>DB: Get candidate profile
-    DB-->>QG: Profile data
-    QG-->>WS: Opening question
+    WS->>OAI: Generate opening question
+    OAI->>DB: Get candidate profile
+    DB-->>OAI: Profile data
+    OAI-->>WS: Opening question
     WS->>TTS: Convert to speech
     TTS-->>WS: Audio data
     WS-->>C: Play opening question
@@ -67,23 +66,24 @@ sequenceDiagram
         STT-->>AS: Transcription
         AS-->>WS: Transcribed text
         
-        WS->>NLP: Analyze response
-        NLP-->>WS: Analysis results
+        WS->>OAI: Analyze response + Generate next question
+        Note over OAI: Single API call handles:<br/>• Response analysis<br/>• Scoring & evaluation<br/>• Next question generation
+        OAI->>DB: Get interview context
+        DB-->>OAI: Context data
+        OAI-->>WS: Analysis + Next question
+        
         WS->>DB: Store response & analysis
-        
-        WS->>QG: Generate next question
-        QG->>DB: Get interview context
-        DB-->>QG: Context data
-        QG-->>WS: Next question
-        
-        WS->>TTS: Convert to speech
+        WS->>TTS: Convert question to speech
         TTS-->>WS: Audio response
         WS-->>C: Play AI question
     end
     
     Note over C,DB: Interview Completion
-    WS->>DB: Generate final report
-    DB-->>WS: Interview report
+    WS->>OAI: Generate final report
+    OAI->>DB: Get all responses
+    DB-->>OAI: Complete interview data
+    OAI-->>WS: Interview report
+    WS->>DB: Store report
     WS-->>C: Interview completed
 ```
 
@@ -113,7 +113,7 @@ graph LR
     O -->|Yes| P[Process Transcription]
     O -->|No| Q[Request Repeat/Clarification]
     
-    P --> R[NLP Analysis]
+    P --> R[OpenAI API Analysis]
     Q --> S[Generate Clarification Question]
     S --> T[Text-to-Speech]
     T --> U[Audio Response]
@@ -123,38 +123,31 @@ graph LR
     style R fill:#e8f5e8
 ```
 
-## 4. Question Generation Strategy
+## 4. Question Generation Strategy (OpenAI API)
 
 ```mermaid
 graph TD
-    A[Interview Context] --> B[Candidate Profile Analysis]
-    B --> C[Previous Response Evaluation]
-    C --> D[Skill Gap Identification]
-    D --> E[Question Type Selection]
+    A[Interview Context] --> B[OpenAI API Call]
+    B --> C[Prompt Engineering]
+    C --> D[Context Analysis]
     
-    E --> F{Question Type}
-    F -->|Technical| G[Technical Question Bank]
-    F -->|Behavioral| H[Behavioral Question Bank]
-    F -->|Situational| I[Situational Question Bank]
-    F -->|Follow-up| J[Dynamic Follow-up Generator]
+    D --> E[OpenAI GPT-4 Processing]
+    E --> F[Intelligent Question Generation]
     
-    G --> K[Difficulty Adaptation]
-    H --> K
-    I --> K
-    J --> K
+    F --> G{Question Quality Check}
+    G -->|Valid| H[Return Generated Question]
+    G -->|Invalid| I[Retry with Modified Prompt]
+    I --> E
     
-    K --> L[Question Customization]
-    L --> M[Context Integration]
-    M --> N[Final Question Generation]
-    
-    N --> O[Question Validation]
-    O --> P{Valid Question?}
-    P -->|Yes| Q[Return Question]
-    P -->|No| E
+    H --> J[Question Includes:]
+    J --> K[• Technical/Behavioral Type<br/>• Difficulty Level<br/>• Skills Assessment<br/>• Expected Duration<br/>• Evaluation Criteria]
     
     style A fill:#e1f5fe
-    style N fill:#f3e5f5
-    style Q fill:#e8f5e8
+    style E fill:#f3e5f5
+    style H fill:#e8f5e8
+    
+    Note1[All logic handled by<br/>OpenAI API - no separate<br/>question bank needed]
+    Note1 -.-> E
 ```
 
 ## 5. Error Handling & Recovery Flow
@@ -248,9 +241,7 @@ graph TB
     
     subgraph "AI/ML Layer"
         K[Speech Services]
-        L[NLP Engine]
-        M[Question Generator]
-        N[Response Analyzer]
+        L[OpenAI API Service]
     end
     
     subgraph "Data Layer"
@@ -273,10 +264,7 @@ graph TB
     H --> K
     I --> P
     
-    L --> M
-    L --> N
-    M --> O
-    N --> O
+    L --> O
     
     G --> O
     H --> Q
@@ -310,8 +298,7 @@ graph LR
     subgraph "AI Services"
         G[STT Service]
         H[TTS Service]
-        I[NLP Service]
-        J[Question Service]
+        I[OpenAI API Service]
     end
     
     subgraph "Infrastructure"
@@ -332,7 +319,6 @@ graph LR
     K -.->|Events| G
     K -.->|Events| H
     K -.->|Events| I
-    K -.->|Events| J
     
     C <-.->|Service Mesh| L
     D <-.->|Service Mesh| L
@@ -351,7 +337,7 @@ graph TD
     subgraph "Metrics Sources"
         C[Audio Latency]
         D[STT Processing Time]
-        E[NLP Response Time]
+        E[OpenAI API Response Time]
         F[TTS Generation Time]
         G[WebRTC Quality]
         H[Database Performance]
